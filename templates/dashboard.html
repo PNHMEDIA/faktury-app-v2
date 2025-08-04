@@ -4,6 +4,19 @@
 
 {% block content %}
 <style>
+    :root {
+        --primary-color: #007bff;
+        --light-gray: #f8f9fa;
+        --medium-gray: #e9ecef;
+        --dark-gray: #6c757d;
+        --text-color: #212529;
+        --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    body {
+        background-color: var(--light-gray);
+    }
+
     /* --- Hlavní ovládací prvky --- */
     .controls {
         display: flex;
@@ -38,9 +51,9 @@
         transition: background-color 0.2s, color 0.2s;
     }
     .view-controls button.active {
-        background-color: #007bff;
+        background-color: var(--primary-color);
         color: white;
-        border-color: #007bff;
+        border-color: var(--primary-color);
     }
 
     /* --- Kontejner pro faktury --- */
@@ -58,9 +71,9 @@
         flex-direction: row;
         background: #fff;
         border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        box-shadow: var(--card-shadow);
         padding: 1.5rem;
-        position: relative; /* Nutné pro pozicování akcí */
+        position: relative;
         overflow: hidden;
     }
     .card-view .invoice-info {
@@ -70,54 +83,52 @@
     .card-view .invoice-preview {
         flex: 1;
         max-width: 45%;
-        display: block; /* Vždy viditelný v card view */
+        display: block;
     }
 
     /* --- Styl pro zobrazení SEZNAMU --- */
     #invoiceContainer.list-view {
-        grid-template-columns: 1fr; /* Všechny položky pod sebou */
+        grid-template-columns: 1fr;
     }
     .list-view .invoice-item {
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr auto;
         align-items: center;
         background: #fff;
         border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        box-shadow: var(--card-shadow);
         padding: 1rem 1.5rem;
-        position: relative;
     }
     .list-view .invoice-info {
-        flex-grow: 1;
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 150px 1fr 2fr; /* Datum | Dodavatel | Popis */
+        gap: 1rem;
         align-items: center;
     }
     .list-view .invoice-preview {
-        display: none; /* Skrytý v list view */
+        display: none;
     }
+    .list-view .info-supplier { font-weight: 600; }
+    .list-view .info-description { color: var(--dark-gray); }
 
     /* --- Společné styly pro položky --- */
-    .invoice-info h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #1c1e21; }
+    .invoice-info h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; color: var(--text-color); }
     .invoice-info p { margin: 0.3rem 0; color: #555; }
     .invoice-info p small { color: #888; }
     .invoice-preview img { width: 100%; height: auto; border-radius: 8px; border: 1px solid #eee; object-fit: cover; }
     
     /* --- Akce (tlačítka i, edit, delete) --- */
     .actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .card-view .actions {
         position: absolute;
         top: 1rem;
         right: 1rem;
-        display: flex;
-        gap: 0.5rem;
         background-color: rgba(255, 255, 255, 0.8);
         padding: 0.3rem;
         border-radius: 1rem;
-    }
-    .list-view .actions {
-        position: static; /* V list view jsou součástí toku */
-        background-color: transparent;
-        padding: 0;
-        margin-left: 1rem;
     }
     .actions a, .actions button {
         display: flex;
@@ -145,14 +156,14 @@
         background-color: #333;
         color: #fff;
         text-align: left;
-        white-space: pre-wrap; /* Zachová formátování */
+        white-space: pre-wrap;
         border-radius: 6px;
         padding: 10px;
         position: absolute;
         z-index: 10;
         bottom: 125%;
         left: 50%;
-        margin-left: -125px; /* Centrování */
+        margin-left: -125px;
         opacity: 0;
         transition: opacity 0.3s;
     }
@@ -160,6 +171,60 @@
         visibility: visible;
         opacity: 1;
     }
+
+    /* --- Custom Modal pro mazání --- */
+    .modal-overlay {
+        visibility: hidden;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        transition: opacity 0.3s, visibility 0.3s;
+    }
+    .modal-overlay.visible {
+        visibility: visible;
+        opacity: 1;
+    }
+    .modal-content {
+        background: #fff;
+        padding: 2rem;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 400px;
+        text-align: center;
+        transform: scale(0.9);
+        transition: transform 0.3s;
+    }
+    .modal-overlay.visible .modal-content {
+        transform: scale(1);
+    }
+    .modal-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+    .modal-buttons button {
+        padding: 0.8rem 1.5rem;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    .modal-confirm-btn {
+        background-color: #dc3545;
+        color: white;
+    }
+    .modal-cancel-btn {
+        background-color: #e9ecef;
+    }
+
 </style>
 
 <div class="controls">
@@ -180,30 +245,48 @@
         </div>
     {% else %}
         {% for file in files %}
-        <div class="invoice-item" data-search-text="{{ (file.filename + ' ' + file.supplier + ' ' + file.description)|lower }}">
+        <div class="invoice-item" data-search-text="{{ (file.filename + ' ' + file.supplier + ' ' + file.description)|lower }}" data-filename="{{ file.filename }}">
             <div class="invoice-preview">
                 <img src="{{ url_for('get_preview', filename=file.preview_image) }}" alt="Náhled faktury">
             </div>
             <div class="invoice-info">
-                <div class="info-text">
+                <!-- Card View Content -->
+                <div class="card-info-content">
                     <h3>{{ file.supplier }}</h3>
                     <p><strong>Datum:</strong> {{ file.date }}</p>
                     <p><strong>Popis:</strong> {{ file.description }}</p>
                     <p><small>{{ file.filename }}</small></p>
                 </div>
-                <!-- V list-view se akce zobrazí zde -->
+                <!-- List View Content -->
+                <div class="list-info-content">
+                    <div class="info-date">{{ file.date }}</div>
+                    <div class="info-supplier">{{ file.supplier }}</div>
+                    <div class="info-description">{{ file.description }}</div>
+                </div>
             </div>
-             <div class="actions">
+            <div class="actions">
                 <div class="tooltip">
-                    <button>ℹ️</button>
+                    <button aria-label="Zobrazit detailní informace">ℹ️</button>
                     <span class="tooltiptext">{{ file.detailed_description }}</span>
                 </div>
-                <a href="{{ url_for('edit_invoice', filename=file.filename) }}" title="Upravit">✏️</a>
-                <button onclick="deleteInvoice('{{ file.filename }}')" title="Smazat">🗑️</button>
+                <a href="{{ url_for('edit_invoice', filename=file.filename) }}" title="Upravit" aria-label="Upravit fakturu">✏️</a>
+                <button class="delete-btn" title="Smazat" aria-label="Smazat fakturu">🗑️</button>
             </div>
         </div>
         {% endfor %}
     {% endif %}
+</div>
+
+<!-- Custom Modal HTML -->
+<div id="deleteModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3>Opravdu smazat?</h3>
+        <p>Chystáte se trvale smazat fakturu <strong id="modalFilename"></strong>. Tuto akci nelze vrátit zpět.</p>
+        <div class="modal-buttons">
+            <button id="modalCancelBtn" class="modal-cancel-btn">Zrušit</button>
+            <button id="modalConfirmBtn" class="modal-confirm-btn">Smazat</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -212,62 +295,74 @@
     const cardViewBtn = document.getElementById('cardViewBtn');
     const listViewBtn = document.getElementById('listViewBtn');
     const invoiceContainer = document.getElementById('invoiceContainer');
+    const deleteModal = document.getElementById('deleteModal');
+    const modalFilenameSpan = document.getElementById('modalFilename');
+    const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+    const modalCancelBtn = document.getElementById('modalCancelBtn');
+    let fileToDelete = null;
 
     // --- Hledání ---
     searchInput.addEventListener('keyup', function() {
         const filter = this.value.toLowerCase();
         document.querySelectorAll('.invoice-item').forEach(item => {
-            const searchText = item.dataset.searchText;
-            if (searchText.includes(filter)) {
-                item.style.display = "";
-            } else {
-                item.style.display = "none";
-            }
+            item.style.display = item.dataset.searchText.includes(filter) ? "" : "none";
         });
     });
 
     // --- Přepínání zobrazení ---
-    cardViewBtn.addEventListener('click', function() {
-        invoiceContainer.className = 'card-view';
-        this.classList.add('active');
-        listViewBtn.classList.remove('active');
-    });
-
-    listViewBtn.addEventListener('click', function() {
-        invoiceContainer.className = 'list-view';
-        this.classList.add('active');
-        cardViewBtn.classList.remove('active');
-    });
+    function setView(view) {
+        invoiceContainer.className = view;
+        cardViewBtn.classList.toggle('active', view === 'card-view');
+        listViewBtn.classList.toggle('active', view === 'list-view');
+    }
+    cardViewBtn.addEventListener('click', () => setView('card-view'));
+    listViewBtn.addEventListener('click', () => setView('list-view'));
 
     // --- Skrývání obrázků ---
     toggleImagesBtn.addEventListener('click', function() {
-        invoiceContainer.classList.toggle('hide-previews');
-        if (invoiceContainer.classList.contains('hide-previews')) {
-            document.querySelectorAll('.invoice-preview').forEach(p => p.style.display = 'none');
-            this.innerText = 'Zobrazit obrázky';
-        } else {
-            document.querySelectorAll('.invoice-preview').forEach(p => p.style.display = '');
-            this.innerText = 'Skrýt obrázky';
-        }
+        const previews = document.querySelectorAll('.invoice-preview');
+        const isHidden = previews[0] && previews[0].style.display === 'none';
+        previews.forEach(p => {
+            p.style.display = isHidden ? '' : 'none';
+        });
+        this.innerText = isHidden ? 'Skrýt obrázky' : 'Zobrazit obrázky';
     });
 
-    // --- Mazání faktury ---
-    function deleteInvoice(filename) {
-        if (confirm(`Opravdu chcete trvale smazat fakturu ${filename}?`)) {
-            fetch(`/delete_invoice/${filename}`, { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        // Místo reloadu stránky odstraníme prvek přímo
-                        const itemToDelete = document.querySelector(`[data-search-text*="${filename.toLowerCase()}"]`);
-                        if(itemToDelete) {
-                            itemToDelete.remove();
-                        }
-                    } else {
-                        alert('Chyba při mazání faktury: ' + data.message);
+    // --- Mazání faktury s Custom Modalem ---
+    document.querySelectorAll('.delete-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const item = this.closest('.invoice-item');
+            fileToDelete = item.dataset.filename;
+            modalFilenameSpan.textContent = fileToDelete;
+            deleteModal.classList.add('visible');
+        });
+    });
+
+    modalCancelBtn.addEventListener('click', () => {
+        deleteModal.classList.remove('visible');
+        fileToDelete = null;
+    });
+
+    modalConfirmBtn.addEventListener('click', () => {
+        if (!fileToDelete) return;
+
+        fetch(`/delete_invoice/${fileToDelete}`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const itemToDeleteEl = document.querySelector(`[data-filename="${fileToDelete}"]`);
+                    if (itemToDeleteEl) {
+                        itemToDeleteEl.remove();
                     }
-                });
-        }
-    }
+                } else {
+                    alert('Chyba při mazání faktury: ' + (data.message || 'Neznámá chyba'));
+                }
+            })
+            .finally(() => {
+                deleteModal.classList.remove('visible');
+                fileToDelete = null;
+            });
+    });
+
 </script>
 {% endblock %}
