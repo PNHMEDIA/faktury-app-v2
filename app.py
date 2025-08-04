@@ -5,7 +5,7 @@ import os
 import json
 import base64
 import io
-from flask import Flask, request, render_template, redirect, url_for, flash, session, send_from_directory
+from flask import Flask, request, render_template, redirect, url_for, flash, session, send_from_directory, jsonify
 from werkzeug.utils import secure_filename
 from PIL import Image
 from openai import OpenAI
@@ -34,13 +34,17 @@ STATIC_DIR = os.path.join(basedir, 'static')
 UPLOAD_FOLDER = os.path.join(STATIC_DIR, 'uploads')
 PROCESSED_FOLDER = os.path.join(STATIC_DIR, 'processed')
 PREVIEW_FOLDER = os.path.join(STATIC_DIR, 'previews')
+DB_FOLDER = os.path.join(STATIC_DIR, 'db')
+
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['PROCESSED_FOLDER'] = PROCESSED_FOLDER
 app.config['PREVIEW_FOLDER'] = PREVIEW_FOLDER
+app.config['DB_FOLDER'] = DB_FOLDER
+
 
 # Vytvoření složek, pokud neexistují
-for folder in [UPLOAD_FOLDER, PROCESSED_FOLDER, PREVIEW_FOLDER]:
+for folder in [UPLOAD_FOLDER, PROCESSED_FOLDER, PREVIEW_FOLDER, DB_FOLDER]:
     if not os.path.exists(folder):
         os.makedirs(folder)
 
@@ -88,6 +92,8 @@ def extract_invoice_data_from_image(base64_image):
     2.  "issue_date": Najdi datum vystavení faktury. Hledej klíčová slova jako "Datum vystavení", "Datum zdanitelného plnění" (DUZP) nebo "Datum uskutečnění plnění". Vždy vrať nejrelevantnější datum pro účetnictví. Formát musí být striktně `RRRR-MM-DD`. Pokud datum nenajdeš, vrať "RRRR-MM-DD".
 
     3.  "description": Identifikuj hlavní předmět fakturace. Podívej se na seznam fakturovaných položek a vytvoř z nich velmi stručný souhrn (maximálně 4-5 slov). Například: "Nákup kancelářských potřeb", "Hostingové služby za květen", "Marketingová konzultace", "Nákup piva". Pokud popis nelze určit, vrať "Neznámé zboží".
+    
+    4. "detailed_description": Poskytni podrobnější popis fakturovaných položek. Uveď všechny položky, jejich počet a ceny, pokud jsou k dispozici.
 
     Vrať pouze a jen validní JSON objekt. Žádný další text před nebo za ním.
     """
@@ -109,7 +115,7 @@ def extract_invoice_data_from_image(base64_image):
                 }
             ],
             response_format={"type": "json_object"},
-            max_tokens=300,
+            max_tokens=500,
         )
         return json.loads(response.choices[0].message.content)
     except Exception as e:
@@ -132,6 +138,20 @@ def create_preview(original_path, preview_filename):
     except Exception as e:
         print(f"Nepodařilo se vytvořit náhled: {e}")
         return False
+
+def save_invoice_details(filename, details):
+    """Uloží podrobné informace o faktuře do JSON souboru."""
+    db_path = os.path.join(app.config['DB_FOLDER'], f"{filename}.json")
+    with open(db_path, 'w') as f:
+        json.dump(details, f)
+
+def load_invoice_details(filename):
+    """Načte podrobné informace o faktuře z JSON souboru."""
+    db_path = os.path.join(app.config['DB_FOLDER'], f"{filename}.json")
+    if os.path.exists(db_path):
+        with open(db_path, 'r') as f:
+            return json.load(f)
+    return None
 
 # --- ROUTY (JEDNOTLIVÉ STRÁNKY) ---
 
@@ -159,11 +179,15 @@ def dashboard():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
     
+    search_query = request.args.get('search', '').lower()
+    
     processed_files_info = []
-    # Seřadí soubory, aby se nejnovější zobrazovaly nahoře
     sorted_files = sorted(os.listdir(app.config['PROCESSED_FOLDER']), key=lambda f: os.path.getmtime(os.path.join(app.config['PROCESSED_FOLDER'], f)), reverse=True)
     
     for filename in sorted_files:
+        if search_query and search_query not in filename.lower():
+            continue
+            
         try:
             base_name = os.path.splitext(filename)[0]
             
@@ -179,16 +203,20 @@ def dashboard():
             supplier = date_supplier_split[1] if len(date_supplier_split) > 1 else "Neznámý dodavatel"
 
             preview_filename = os.path.splitext(filename)[0] + ".jpg"
+            
+            details = load_invoice_details(os.path.splitext(filename)[0])
+
             processed_files_info.append({
                 'filename': filename, 'preview_image': preview_filename,
                 'date': f"20{date_str[0:2]}-{date_str[2:4]}-{date_str[4:6]}",
-                'supplier': supplier, 'description': description
+                'supplier': supplier, 'description': description,
+                'detailed_description': details.get('detailed_description', 'Žádné podrobnosti') if details else 'Žádné podrobnosti'
             })
         except Exception as e:
             print(f"Chyba při parsování názvu souboru '{filename}': {e}")
             continue
             
-    return render_template('dashboard.html', files=processed_files_info)
+    return render_template('dashboard.html', files=processed_files_info, search_query=search_query)
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_page():
@@ -237,6 +265,9 @@ def upload_page():
                 preview_filename = os.path.splitext(final_filename)[0] + ".jpg"
                 create_preview(temp_path, preview_filename)
                 os.rename(temp_path, processed_path)
+                
+                save_invoice_details(os.path.splitext(final_filename)[0], data)
+                
                 flash(f"Faktura '{original_filename}' byla úspěšně zpracována.", "success")
 
             except Exception as e:
@@ -252,6 +283,69 @@ def upload_page():
         return redirect(url_for('dashboard'))
 
     return render_template('upload.html')
+
+@app.route('/delete_invoice/<filename>', methods=['POST'])
+def delete_invoice(filename):
+    if not session.get('logged_in'):
+        return jsonify({'status': 'error', 'message': 'Nepřihlášen'}), 401
+
+    try:
+        os.remove(os.path.join(app.config['PROCESSED_FOLDER'], filename))
+        os.remove(os.path.join(app.config['PREVIEW_FOLDER'], f"{os.path.splitext(filename)[0]}.jpg"))
+        os.remove(os.path.join(app.config['DB_FOLDER'], f"{os.path.splitext(filename)[0]}.json"))
+        flash(f"Faktura '{filename}' byla smazána.", "success")
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print(f"Chyba při mazání souboru '{filename}': {e}")
+        return jsonify({'status': 'error', 'message': 'Chyba při mazání souboru'}), 500
+
+@app.route('/edit_invoice/<filename>', methods=['GET', 'POST'])
+def edit_invoice(filename):
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        new_supplier = request.form['supplier']
+        new_description = request.form['description']
+        new_date = request.form['date']
+
+        date_str = new_date.replace('-', '')[2:]
+        
+        base_new_filename = f"{date_str} {new_supplier}, {new_description}, E F ZAP"
+        
+        invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
+        for char in invalid_chars:
+            base_new_filename = base_new_filename.replace(char, '')
+        
+        _, extension = os.path.splitext(filename)
+        new_filename = f"{base_new_filename.strip()}{extension}"
+        
+        os.rename(os.path.join(app.config['PROCESSED_FOLDER'], filename), os.path.join(app.config['PROCESSED_FOLDER'], new_filename))
+        os.rename(os.path.join(app.config['PREVIEW_FOLDER'], f"{os.path.splitext(filename)[0]}.jpg"), os.path.join(app.config['PREVIEW_FOLDER'], f"{os.path.splitext(new_filename)[0]}.jpg"))
+        os.rename(os.path.join(app.config['DB_FOLDER'], f"{os.path.splitext(filename)[0]}.json"), os.path.join(app.config['DB_FOLDER'], f"{os.path.splitext(new_filename)[0]}.json"))
+
+        flash(f"Faktura '{filename}' byla upravena.", "success")
+        return redirect(url_for('dashboard'))
+
+    base_name = os.path.splitext(filename)[0]
+    if base_name.endswith(', E F ZAP'):
+        base_name = base_name[:-len(', E F ZAP')]
+    parts = base_name.split(', ', 1)
+    date_and_supplier_part = parts[0]
+    description = parts[1] if len(parts) > 1 else ""
+    date_supplier_split = date_and_supplier_part.split(' ', 1)
+    date_str = date_supplier_split[0]
+    supplier = date_supplier_split[1] if len(date_supplier_split) > 1 else ""
+    date = f"20{date_str[0:2]}-{date_str[2:4]}-{date_str[4:6]}"
+
+    invoice_data = {
+        'filename': filename,
+        'supplier': supplier,
+        'description': description,
+        'date': date
+    }
+    return render_template('edit_invoice.html', invoice=invoice_data)
+
 
 @app.route('/previews/<filename>')
 def get_preview(filename):
