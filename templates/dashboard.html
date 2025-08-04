@@ -4,61 +4,202 @@
 
 {% block content %}
 <style>
-    .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-    .search-bar { width: 50%; }
-    .search-bar input { width: 100%; padding: 0.8rem; border-radius: 8px; border: 1px solid #ddd; }
-    .view-controls button { padding: 0.8rem 1rem; border: 1px solid #ddd; background: #fff; cursor: pointer; border-radius: 8px; }
-    .view-controls button.active { background-color: #007bff; color: white; border-color: #007bff; }
-    .invoice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 1.5rem; }
-    .invoice-list { display: flex; flex-direction: column; gap: 1rem; }
-    .invoice-card, .invoice-list-item { display: flex; gap: 1.5rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 1.5rem; position: relative; }
-    .invoice-info { flex: 1; }
-    .invoice-info h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; }
+    /* --- Hlavní ovládací prvky --- */
+    .controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .search-bar {
+        flex-grow: 1;
+        min-width: 250px;
+    }
+    .search-bar input {
+        width: 100%;
+        padding: 0.8rem;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        font-size: 1rem;
+    }
+    .view-controls {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .view-controls button {
+        padding: 0.8rem 1rem;
+        border: 1px solid #ccc;
+        background: #fff;
+        cursor: pointer;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        transition: background-color 0.2s, color 0.2s;
+    }
+    .view-controls button.active {
+        background-color: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+
+    /* --- Kontejner pro faktury --- */
+    #invoiceContainer {
+        display: grid;
+        gap: 1.5rem;
+    }
+
+    /* --- Styl pro zobrazení KARET --- */
+    #invoiceContainer.card-view {
+        grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+    }
+    .card-view .invoice-item {
+        display: flex;
+        flex-direction: row;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        padding: 1.5rem;
+        position: relative; /* Nutné pro pozicování akcí */
+        overflow: hidden;
+    }
+    .card-view .invoice-info {
+        flex: 1;
+        min-width: 0;
+    }
+    .card-view .invoice-preview {
+        flex: 1;
+        max-width: 45%;
+        display: block; /* Vždy viditelný v card view */
+    }
+
+    /* --- Styl pro zobrazení SEZNAMU --- */
+    #invoiceContainer.list-view {
+        grid-template-columns: 1fr; /* Všechny položky pod sebou */
+    }
+    .list-view .invoice-item {
+        display: flex;
+        align-items: center;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        padding: 1rem 1.5rem;
+        position: relative;
+    }
+    .list-view .invoice-info {
+        flex-grow: 1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .list-view .invoice-preview {
+        display: none; /* Skrytý v list view */
+    }
+
+    /* --- Společné styly pro položky --- */
+    .invoice-info h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #1c1e21; }
     .invoice-info p { margin: 0.3rem 0; color: #555; }
-    .invoice-preview { flex: 1; }
-    .invoice-preview img { width: 100%; height: auto; border-radius: 8px; border: 1px solid #eee; }
-    .actions { position: absolute; top: 1rem; right: 1rem; display: flex; gap: 0.5rem; }
-    .actions a, .actions button { padding: 0.5rem; background: #f0f0f0; border: none; border-radius: 50%; cursor: pointer; }
-    .tooltip { position: relative; display: inline-block; }
-    .tooltip .tooltiptext { visibility: hidden; width: 220px; background-color: #555; color: #fff; text-align: center; border-radius: 6px; padding: 5px 0; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -110px; opacity: 0; transition: opacity 0.3s; }
-    .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
+    .invoice-info p small { color: #888; }
+    .invoice-preview img { width: 100%; height: auto; border-radius: 8px; border: 1px solid #eee; object-fit: cover; }
+    
+    /* --- Akce (tlačítka i, edit, delete) --- */
+    .actions {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        display: flex;
+        gap: 0.5rem;
+        background-color: rgba(255, 255, 255, 0.8);
+        padding: 0.3rem;
+        border-radius: 1rem;
+    }
+    .list-view .actions {
+        position: static; /* V list view jsou součástí toku */
+        background-color: transparent;
+        padding: 0;
+        margin-left: 1rem;
+    }
+    .actions a, .actions button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        text-decoration: none;
+        color: #333;
+        background: #f0f0f0;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .actions a:hover, .actions button:hover {
+        background: #e0e0e0;
+    }
+
+    /* --- Tooltip pro detailní info --- */
+    .tooltip { position: relative; }
+    .tooltip .tooltiptext {
+        visibility: hidden;
+        width: 250px;
+        background-color: #333;
+        color: #fff;
+        text-align: left;
+        white-space: pre-wrap; /* Zachová formátování */
+        border-radius: 6px;
+        padding: 10px;
+        position: absolute;
+        z-index: 10;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -125px; /* Centrování */
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    .tooltip:hover .tooltiptext {
+        visibility: visible;
+        opacity: 1;
+    }
 </style>
 
 <div class="controls">
     <div class="search-bar">
-        <input type="text" id="searchInput" placeholder="Hledat faktury..." value="{{ search_query }}">
+        <input type="text" id="searchInput" placeholder="Hledat podle názvu, popisu, data..." value="{{ search_query }}">
     </div>
     <div class="view-controls">
-        <button id="toggleImages">Skrýt obrázky</button>
+        <button id="toggleImagesBtn">Skrýt obrázky</button>
         <button id="cardViewBtn" class="active">Karty</button>
         <button id="listViewBtn">Seznam</button>
     </div>
 </div>
 
-<div id="invoiceContainer" class="invoice-grid">
+<div id="invoiceContainer" class="card-view">
     {% if not files %}
-        <div class="card">
+        <div class="card" style="text-align: center; padding: 2rem;">
             <p>Zatím nebyly zpracovány žádné faktury. Můžete nějaké <a href="{{ url_for('upload_page') }}">nahrát</a>.</p>
         </div>
     {% else %}
         {% for file in files %}
-        <div class="invoice-item">
-            <div class="invoice-info">
-                <h3>{{ file.supplier }}</h3>
-                <p><strong>Datum:</strong> {{ file.date }}</p>
-                <p><strong>Popis:</strong> {{ file.description }}</p>
-                <p><small>Název souboru: {{ file.filename }}</small></p>
-            </div>
+        <div class="invoice-item" data-search-text="{{ (file.filename + ' ' + file.supplier + ' ' + file.description)|lower }}">
             <div class="invoice-preview">
                 <img src="{{ url_for('get_preview', filename=file.preview_image) }}" alt="Náhled faktury">
             </div>
-            <div class="actions">
+            <div class="invoice-info">
+                <div class="info-text">
+                    <h3>{{ file.supplier }}</h3>
+                    <p><strong>Datum:</strong> {{ file.date }}</p>
+                    <p><strong>Popis:</strong> {{ file.description }}</p>
+                    <p><small>{{ file.filename }}</small></p>
+                </div>
+                <!-- V list-view se akce zobrazí zde -->
+            </div>
+             <div class="actions">
                 <div class="tooltip">
-                    <button>i</button>
+                    <button>ℹ️</button>
                     <span class="tooltiptext">{{ file.detailed_description }}</span>
                 </div>
-                <a href="{{ url_for('edit_invoice', filename=file.filename) }}">✏️</a>
-                <button onclick="deleteInvoice('{{ file.filename }}')">🗑️</button>
+                <a href="{{ url_for('edit_invoice', filename=file.filename) }}" title="Upravit">✏️</a>
+                <button onclick="deleteInvoice('{{ file.filename }}')" title="Smazat">🗑️</button>
             </div>
         </div>
         {% endfor %}
@@ -66,11 +207,18 @@
 </div>
 
 <script>
-    document.getElementById('searchInput').addEventListener('keyup', function() {
-        let filter = this.value.toLowerCase();
-        let items = document.querySelectorAll('.invoice-item');
-        items.forEach(item => {
-            if (item.innerText.toLowerCase().includes(filter)) {
+    const searchInput = document.getElementById('searchInput');
+    const toggleImagesBtn = document.getElementById('toggleImagesBtn');
+    const cardViewBtn = document.getElementById('cardViewBtn');
+    const listViewBtn = document.getElementById('listViewBtn');
+    const invoiceContainer = document.getElementById('invoiceContainer');
+
+    // --- Hledání ---
+    searchInput.addEventListener('keyup', function() {
+        const filter = this.value.toLowerCase();
+        document.querySelectorAll('.invoice-item').forEach(item => {
+            const searchText = item.dataset.searchText;
+            if (searchText.includes(filter)) {
                 item.style.display = "";
             } else {
                 item.style.display = "none";
@@ -78,35 +226,45 @@
         });
     });
 
-    document.getElementById('toggleImages').addEventListener('click', function() {
-        let previews = document.querySelectorAll('.invoice-preview');
-        previews.forEach(preview => {
-            preview.style.display = preview.style.display === 'none' ? '' : 'none';
-        });
-        this.innerText = this.innerText === 'Skrýt obrázky' ? 'Zobrazit obrázky' : 'Skrýt obrázky';
-    });
-
-    document.getElementById('cardViewBtn').addEventListener('click', function() {
-        document.getElementById('invoiceContainer').className = 'invoice-grid';
+    // --- Přepínání zobrazení ---
+    cardViewBtn.addEventListener('click', function() {
+        invoiceContainer.className = 'card-view';
         this.classList.add('active');
-        document.getElementById('listViewBtn').classList.remove('active');
+        listViewBtn.classList.remove('active');
     });
 
-    document.getElementById('listViewBtn').addEventListener('click', function() {
-        document.getElementById('invoiceContainer').className = 'invoice-list';
+    listViewBtn.addEventListener('click', function() {
+        invoiceContainer.className = 'list-view';
         this.classList.add('active');
-        document.getElementById('cardViewBtn').classList.remove('active');
+        cardViewBtn.classList.remove('active');
     });
 
+    // --- Skrývání obrázků ---
+    toggleImagesBtn.addEventListener('click', function() {
+        invoiceContainer.classList.toggle('hide-previews');
+        if (invoiceContainer.classList.contains('hide-previews')) {
+            document.querySelectorAll('.invoice-preview').forEach(p => p.style.display = 'none');
+            this.innerText = 'Zobrazit obrázky';
+        } else {
+            document.querySelectorAll('.invoice-preview').forEach(p => p.style.display = '');
+            this.innerText = 'Skrýt obrázky';
+        }
+    });
+
+    // --- Mazání faktury ---
     function deleteInvoice(filename) {
-        if (confirm(`Opravdu chcete smazat fakturu ${filename}?`)) {
+        if (confirm(`Opravdu chcete trvale smazat fakturu ${filename}?`)) {
             fetch(`/delete_invoice/${filename}`, { method: 'POST' })
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        location.reload();
+                        // Místo reloadu stránky odstraníme prvek přímo
+                        const itemToDelete = document.querySelector(`[data-search-text*="${filename.toLowerCase()}"]`);
+                        if(itemToDelete) {
+                            itemToDelete.remove();
+                        }
                     } else {
-                        alert('Chyba při mazání faktury.');
+                        alert('Chyba při mazání faktury: ' + data.message);
                     }
                 });
         }
