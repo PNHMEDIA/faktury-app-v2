@@ -1,0 +1,31 @@
+{% extends "_layout.html" %}
+
+{% block title %}Upravit fakturu{% endblock %}
+
+{% block content %}
+<style>
+    .edit-form { max-width: 600px; margin: 0 auto; }
+    .edit-form label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+    .edit-form input { width: 100%; padding: 0.8rem; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 1rem; }
+    .edit-form button { width: 100%; padding: 0.8rem; border-radius: 8px; border: none; background-color: #007bff; color: white; font-weight: bold; cursor: pointer; }
+</style>
+
+<div class="card edit-form">
+    <h2>Upravit fakturu: {{ invoice.filename }}</h2>
+    <form method="post">
+        <div>
+            <label for="date">Datum (RRRR-MM-DD)</label>
+            <input type="text" id="date" name="date" value="{{ invoice.date }}" required>
+        </div>
+        <div>
+            <label for="supplier">Dodavatel</label>
+            <input type="text" id="supplier" name="supplier" value="{{ invoice.supplier }}" required>
+        </div>
+        <div>
+            <label for="description">Popis</label>
+            <input type="text" id="description" name="description" value="{{ invoice.description }}" required>
+        </div>
+        <button type="submit">Uložit změny</button>
+    </form>
+</div>
+{% endblock %}
