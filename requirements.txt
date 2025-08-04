@@ -1,0 +1,6 @@
+Flask
+openai
+pdf2image
+Pillow
+python-dotenv
+gunicorn

@@ -1,0 +1,41 @@
+{% extends "_layout.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<style>
+    .invoice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 1.5rem; }
+    .invoice-card { display: flex; gap: 1.5rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 1.5rem; }
+    .invoice-info { flex: 1; }
+    .invoice-info h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; }
+    .invoice-info p { margin: 0.3rem 0; color: #555; }
+    .invoice-info strong { color: #1c1e21; }
+    .invoice-preview { flex: 1; }
+    .invoice-preview img { width: 100%; height: auto; border-radius: 8px; border: 1px solid #eee; }
+    .missing-info { color: #d93025; font-weight: bold; }
+</style>
+
+<h2>Zpracované faktury</h2>
+
+{% if not files %}
+    <div class="card">
+        <p>Zatím nebyly zpracovány žádné faktury. Můžete nějaké <a href="{{ url_for('upload_page') }}">nahrát</a>.</p>
+    </div>
+{% else %}
+    <div class="invoice-grid">
+        {% for file in files %}
+        <div class="invoice-card">
+            <div class="invoice-info">
+                <h3>{{ file.supplier if file.supplier != 'Neznámý dodavatel' else '<span class="missing-info">Neznámý dodavatel</span>'|safe }}</h3>
+                <p><strong>Datum:</strong> {{ file.date if 'RRRR' not in file.date else '<span class="missing-info">Nebylo nalezeno</span>'|safe }}</p>
+                <p><strong>Popis:</strong> {{ file.description if file.description != 'Neznámé zboží' else '<span class="missing-info">Nebyl nalezen</span>'|safe }}</p>
+                <p><small>Název souboru: {{ file.filename }}</small></p>
+            </div>
+            <div class="invoice-preview">
+                <img src="{{ url_for('get_preview', filename=file.preview_image) }}" alt="Náhled faktury">
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% endif %}
+{% endblock %}

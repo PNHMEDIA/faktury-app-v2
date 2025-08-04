@@ -1,0 +1,35 @@
+{% extends "_layout.html" %}
+
+{% block title %}Nahrát fakturu{% endblock %}
+
+{% block content %}
+<style>
+    .upload-box { max-width: 600px; margin: 0 auto; }
+    input[type="file"] { width: 100%; border: 2px dashed #ccc; padding: 3rem; background-color: #fafafa; cursor: pointer; transition: background-color 0.2s; border-radius: 8px; }
+    input[type="file"]:hover { background-color: #f0f0f0; }
+    button { width: 100%; padding: 0.8rem; border-radius: 8px; border: 1px solid #ddd; font-size: 1rem; background-color: #007bff; color: white; font-weight: bold; cursor: pointer; margin-top: 1rem; }
+    button:disabled { background-color: #aaa; cursor: not-allowed; }
+    #loader { display: none; text-align: center; margin-top: 1rem; font-weight: bold; }
+</style>
+
+<div class="card upload-box">
+    <h2>Nahrát nové faktury</h2>
+    <p>Přetáhněte sem soubory nebo klikněte pro výběr. Můžete nahrát více souborů najednou.</p>
+    <form id="upload-form" method="post" enctype="multipart/form-data">
+        <input type="file" name="files" multiple required>
+        <button type="submit">Zpracovat soubory</button>
+    </form>
+    <div id="loader">Zpracovávám, prosím čekejte... Může to trvat i několik desítek sekund.</div>
+</div>
+
+<script>
+    document.getElementById('upload-form').addEventListener('submit', function() {
+        const fileInput = this.querySelector('input[type="file"]');
+        if (fileInput.files.length > 0) {
+            document.getElementById('loader').style.display = 'block';
+            this.querySelector('button').disabled = true;
+            this.querySelector('button').innerText = 'Pracuji...';
+        }
+    });
+</script>
+{% endblock %}
