@@ -1,5 +1,5 @@
 # app.py - Finální verze aplikace pro zpracování faktur
-# Využívá OpenAI Vision API a správně načítá cestu k Poppler z .env
+# Využívá OpenAI Vision API a je kompatibilní s lokálním i cloudovým nasazením
 
 import os
 import json
@@ -19,16 +19,7 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY')
 APP_PASSWORD = os.getenv('APP_PASSWORD')
-POPPLER_PATH = os.getenv('POPPLER_PATH') # Cesta k Poppler pro zpracování PDF
-
-# *** NOVÁ DIAGNOSTIKA ***
-print("--- Diagnostika spuštění ---")
-if POPPLER_PATH and os.path.exists(POPPLER_PATH):
-    print(f"INFO: Cesta k Poppler byla úspěšně načtena a existuje: '{POPPLER_PATH}'")
-else:
-    print(f"VAROVÁNÍ: Cesta k Poppler '{POPPLER_PATH}' nebyla nalezena nebo není nastavena v .env souboru! Zpracování PDF selže.")
-print("--------------------------")
-
+POPPLER_PATH = os.getenv('POPPLER_PATH') # Cesta k Poppler pro lokální vývoj
 
 # Cesty ke složkám
 UPLOAD_FOLDER = 'static/uploads'
@@ -54,23 +45,20 @@ def get_image_base64(file_path):
     """
     try:
         if file_path.lower().endswith('.pdf'):
-            print(f"DEBUG: Pokouším se konvertovat PDF '{file_path}' pomocí Poppler z cesty: '{POPPLER_PATH}'")
-            pages = convert_from_path(file_path, 300, first_page=1, last_page=1, poppler_path=POPPLER_PATH)
+            # Použije cestu k Poppler, pouze pokud je explicitně definována
+            pages = convert_from_path(file_path, 300, first_page=1, last_page=1, poppler_path=POPPLER_PATH or None)
             if not pages:
-                print(f"ERROR: convert_from_path pro soubor '{file_path}' nevrátilo žádné stránky.")
                 return None
             
             buf = io.BytesIO()
             pages[0].save(buf, format='JPEG')
             image_bytes = buf.getvalue()
         else:
-            print(f"DEBUG: Načítám obrázkový soubor: {file_path}")
             with open(file_path, "rb") as image_file:
                 image_bytes = image_file.read()
 
         return base64.b64encode(image_bytes).decode('utf-8')
     except Exception as e:
-        # *** VYLEPŠENÁ CHYBOVÁ HLÁŠKA ***
         print(f"FATAL ERROR v get_image_base64: {e}")
         if "Poppler" in str(e):
             raise Exception("PopplerNotFound")
@@ -123,7 +111,7 @@ def create_preview(original_path, preview_filename):
     preview_path = os.path.join(app.config['PREVIEW_FOLDER'], preview_filename)
     try:
         if original_path.lower().endswith('.pdf'):
-            pages = convert_from_path(original_path, 200, first_page=1, last_page=1, poppler_path=POPPLER_PATH)
+            pages = convert_from_path(original_path, 200, first_page=1, last_page=1, poppler_path=POPPLER_PATH or None)
             if pages:
                 pages[0].save(preview_path, 'JPEG')
         else:
@@ -167,10 +155,8 @@ def dashboard():
     
     for filename in sorted_files:
         try:
-            # *** UPRAVENÁ LOGIKA PRO PARSOVÁNÍ NOVÉHO FORMÁTU NÁZVU ***
             base_name = os.path.splitext(filename)[0]
             
-            # Odstranění koncovky ", E F ZAP"
             if base_name.endswith(', E F ZAP'):
                 base_name = base_name[:-len(', E F ZAP')]
 
@@ -211,7 +197,6 @@ def upload_page():
             file.save(temp_path)
 
             try:
-                # 1. Převedení souboru na base64 obrázek
                 base64_image = get_image_base64(temp_path)
                 if not base64_image:
                     flash(f"Nepodařilo se zpracovat soubor na obrázek: {original_filename}", "error")
@@ -219,23 +204,19 @@ def upload_page():
                         os.remove(temp_path)
                     continue
 
-                # 2. Extrakce dat pomocí Vision API
                 data = extract_invoice_data_from_image(base64_image)
                 if not data:
                     flash(f"AI nedokázala extrahovat data ze souboru: {original_filename}", "error")
                     continue
                 
-                # 3. Sestavení nového názvu a přejmenování
                 date_str = data.get('issue_date', 'RRRR-MM-DD').replace('-', '')[2:]
                 supplier = data.get('supplier_name', 'Neznámý dodavatel').strip()
                 description = data.get('description', 'Neznámé zboží').strip()
                 
                 _, extension = os.path.splitext(original_filename)
                 
-                # *** UPRAVENÝ FORMÁT NÁZVU SOUBORU (BEZ ZÁVOREK) ***
                 base_new_filename = f"{date_str} {supplier}, {description}, E F ZAP"
                 
-                # Očištění názvu pro systémy souborů (odstranění neplatných znaků)
                 invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
                 for char in invalid_chars:
                     base_new_filename = base_new_filename.replace(char, '')
@@ -243,7 +224,6 @@ def upload_page():
                 final_filename = f"{base_new_filename.strip()}{extension}"
                 processed_path = os.path.join(app.config['PROCESSED_FOLDER'], final_filename)
                 
-                # 4. Vytvoření náhledu a přesun souboru
                 preview_filename = os.path.splitext(final_filename)[0] + ".jpg"
                 create_preview(temp_path, preview_filename)
                 os.rename(temp_path, processed_path)
@@ -251,7 +231,7 @@ def upload_page():
 
             except Exception as e:
                 if "PopplerNotFound" in str(e):
-                    flash(f"Chyba při zpracování PDF '{original_filename}'. Nástroj Poppler nebyl nalezen nebo je cesta v .env souboru nesprávná.", "error")
+                    flash(f"Chyba při zpracování PDF '{original_filename}'. Nástroj Poppler nebyl nalezen. Zkontrolujte, zda je správně nainstalován (např. přes Homebrew na Macu).", "error")
                 else:
                     flash(f"Vyskytla se neznámá chyba při zpracování souboru '{original_filename}'. Zkontrolujte terminál pro detaily.", "error")
                 
@@ -271,4 +251,5 @@ def get_preview(filename):
 
 
 if __name__ == '__main__':
+    # Úprava pro nasazení na Render
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
