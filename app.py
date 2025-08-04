@@ -21,10 +21,20 @@ app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY')
 APP_PASSWORD = os.getenv('APP_PASSWORD')
 POPPLER_PATH = os.getenv('POPPLER_PATH') # Cesta k Poppler pro lokální vývoj
 
-# Cesty ke složkám
-UPLOAD_FOLDER = 'static/uploads'
-PROCESSED_FOLDER = 'static/processed'
-PREVIEW_FOLDER = 'static/previews'
+# --- ROBUSTNÍ NASTAVENÍ CEST PRO UKLÁDÁNÍ SOUBORŮ ---
+# Zajišťuje, že soubory se ukládají na perzistentní disk na Renderu
+
+# Získání absolutní cesty k adresáři, ve kterém se nachází app.py
+basedir = os.path.abspath(os.path.dirname(__file__))
+
+# Definice cesty ke složce 'static', která je připojena k disku
+STATIC_DIR = os.path.join(basedir, 'static')
+
+# Cesty ke složkám uvnitř perzistentního disku
+UPLOAD_FOLDER = os.path.join(STATIC_DIR, 'uploads')
+PROCESSED_FOLDER = os.path.join(STATIC_DIR, 'processed')
+PREVIEW_FOLDER = os.path.join(STATIC_DIR, 'previews')
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['PROCESSED_FOLDER'] = PROCESSED_FOLDER
 app.config['PREVIEW_FOLDER'] = PREVIEW_FOLDER
