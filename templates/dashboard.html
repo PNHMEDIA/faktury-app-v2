@@ -4,38 +4,112 @@
 
 {% block content %}
 <style>
+    .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .search-bar { width: 50%; }
+    .search-bar input { width: 100%; padding: 0.8rem; border-radius: 8px; border: 1px solid #ddd; }
+    .view-controls button { padding: 0.8rem 1rem; border: 1px solid #ddd; background: #fff; cursor: pointer; border-radius: 8px; }
+    .view-controls button.active { background-color: #007bff; color: white; border-color: #007bff; }
     .invoice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 1.5rem; }
-    .invoice-card { display: flex; gap: 1.5rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 1.5rem; }
+    .invoice-list { display: flex; flex-direction: column; gap: 1rem; }
+    .invoice-card, .invoice-list-item { display: flex; gap: 1.5rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 1.5rem; position: relative; }
     .invoice-info { flex: 1; }
     .invoice-info h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; }
     .invoice-info p { margin: 0.3rem 0; color: #555; }
-    .invoice-info strong { color: #1c1e21; }
     .invoice-preview { flex: 1; }
     .invoice-preview img { width: 100%; height: auto; border-radius: 8px; border: 1px solid #eee; }
-    .missing-info { color: #d93025; font-weight: bold; }
+    .actions { position: absolute; top: 1rem; right: 1rem; display: flex; gap: 0.5rem; }
+    .actions a, .actions button { padding: 0.5rem; background: #f0f0f0; border: none; border-radius: 50%; cursor: pointer; }
+    .tooltip { position: relative; display: inline-block; }
+    .tooltip .tooltiptext { visibility: hidden; width: 220px; background-color: #555; color: #fff; text-align: center; border-radius: 6px; padding: 5px 0; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -110px; opacity: 0; transition: opacity 0.3s; }
+    .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
 </style>
 
-<h2>Zpracované faktury</h2>
-
-{% if not files %}
-    <div class="card">
-        <p>Zatím nebyly zpracovány žádné faktury. Můžete nějaké <a href="{{ url_for('upload_page') }}">nahrát</a>.</p>
+<div class="controls">
+    <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="Hledat faktury..." value="{{ search_query }}">
     </div>
-{% else %}
-    <div class="invoice-grid">
+    <div class="view-controls">
+        <button id="toggleImages">Skrýt obrázky</button>
+        <button id="cardViewBtn" class="active">Karty</button>
+        <button id="listViewBtn">Seznam</button>
+    </div>
+</div>
+
+<div id="invoiceContainer" class="invoice-grid">
+    {% if not files %}
+        <div class="card">
+            <p>Zatím nebyly zpracovány žádné faktury. Můžete nějaké <a href="{{ url_for('upload_page') }}">nahrát</a>.</p>
+        </div>
+    {% else %}
         {% for file in files %}
-        <div class="invoice-card">
+        <div class="invoice-item">
             <div class="invoice-info">
-                <h3>{{ file.supplier if file.supplier != 'Neznámý dodavatel' else '<span class="missing-info">Neznámý dodavatel</span>'|safe }}</h3>
-                <p><strong>Datum:</strong> {{ file.date if 'RRRR' not in file.date else '<span class="missing-info">Nebylo nalezeno</span>'|safe }}</p>
-                <p><strong>Popis:</strong> {{ file.description if file.description != 'Neznámé zboží' else '<span class="missing-info">Nebyl nalezen</span>'|safe }}</p>
+                <h3>{{ file.supplier }}</h3>
+                <p><strong>Datum:</strong> {{ file.date }}</p>
+                <p><strong>Popis:</strong> {{ file.description }}</p>
                 <p><small>Název souboru: {{ file.filename }}</small></p>
             </div>
             <div class="invoice-preview">
                 <img src="{{ url_for('get_preview', filename=file.preview_image) }}" alt="Náhled faktury">
             </div>
+            <div class="actions">
+                <div class="tooltip">
+                    <button>i</button>
+                    <span class="tooltiptext">{{ file.detailed_description }}</span>
+                </div>
+                <a href="{{ url_for('edit_invoice', filename=file.filename) }}">✏️</a>
+                <button onclick="deleteInvoice('{{ file.filename }}')">🗑️</button>
+            </div>
         </div>
         {% endfor %}
-    </div>
-{% endif %}
+    {% endif %}
+</div>
+
+<script>
+    document.getElementById('searchInput').addEventListener('keyup', function() {
+        let filter = this.value.toLowerCase();
+        let items = document.querySelectorAll('.invoice-item');
+        items.forEach(item => {
+            if (item.innerText.toLowerCase().includes(filter)) {
+                item.style.display = "";
+            } else {
+                item.style.display = "none";
+            }
+        });
+    });
+
+    document.getElementById('toggleImages').addEventListener('click', function() {
+        let previews = document.querySelectorAll('.invoice-preview');
+        previews.forEach(preview => {
+            preview.style.display = preview.style.display === 'none' ? '' : 'none';
+        });
+        this.innerText = this.innerText === 'Skrýt obrázky' ? 'Zobrazit obrázky' : 'Skrýt obrázky';
+    });
+
+    document.getElementById('cardViewBtn').addEventListener('click', function() {
+        document.getElementById('invoiceContainer').className = 'invoice-grid';
+        this.classList.add('active');
+        document.getElementById('listViewBtn').classList.remove('active');
+    });
+
+    document.getElementById('listViewBtn').addEventListener('click', function() {
+        document.getElementById('invoiceContainer').className = 'invoice-list';
+        this.classList.add('active');
+        document.getElementById('cardViewBtn').classList.remove('active');
+    });
+
+    function deleteInvoice(filename) {
+        if (confirm(`Opravdu chcete smazat fakturu ${filename}?`)) {
+            fetch(`/delete_invoice/${filename}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        location.reload();
+                    } else {
+                        alert('Chyba při mazání faktury.');
+                    }
+                });
+        }
+    }
+</script>
 {% endblock %}
